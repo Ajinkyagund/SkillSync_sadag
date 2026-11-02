@@ -1,0 +1,457 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // Core Helper Functions
+    // ==========================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' ||
+        (hasUserDoc() && getUserData().role == 'admin')
+      );
+    }
+
+    function isActive() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (hasUserDoc() && getUserData().status == 'active')
+      );
+    }
+
+    function isSeniorOrAbove() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (isActive() && getUserData().role in ['senior', 'faculty', 'clubCoordinator'])
+      );
+    }
+
+    function isCoordinatorOrAbove() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (isActive() && getUserData().role in ['clubCoordinator', 'faculty'])
+      );
+    }
+
+    // Deterministic sorted ID check
+    function getSortedId(uidA, uidB) {
+      return uidA < uidB ? uidA + '_' + uidB : uidB + '_' + uidA;
+    }
+
+    function areConnected(uidA, uidB) {
+      let connId = getSortedId(uidA, uidB);
+      return exists(/databases/$(database)/documents/connections/$(connId)) &&
+             get(/databases/$(database)/documents/connections/$(connId)).data.status == 'accepted';
+    }
+
+    // ==========================================
+    // 1. Users collection (Private system records)
+    // ==========================================
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // On creation: must be owner, cannot set role to admin
+      // faculty and clubCoordinator start as pending; student and senior start as active
+      allow create: if isOwner(uid) &&
+        request.resource.data.role != 'admin' &&
+        (
+          (request.resource.data.role in ['student', 'senior'] && request.resource.data.status == 'active') ||
+          (request.resource.data.role in ['faculty', 'clubCoordinator'] && request.resource.data.status == 'pending')
+        );
+
+      // On update: role and status cannot be modified by the user; admin can modify any
+      allow update: if isAdmin() || (
+        isOwner(uid) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 2. Profiles collection (Academic/public profile)
+    // ==========================================
+    match /profiles/{uid} {
+      allow read: if isAuthenticated();
+      // Owner can create or update their own profile; admin can manage
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 3. Connections collection
+    // Deterministic doc ID: uidA_uidB (alphabetical)
+    // ==========================================
+    match /connections/{connectionId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid in resource.data.users || isAdmin()
+      );
+
+      // Active user can send a connection request; ID must match sorted [users[0], users[1]]
+      allow create: if isActive() &&
+        request.resource.data.requesterId == request.auth.uid &&
+        request.auth.uid in request.resource.data.users &&
+        connectionId == getSortedId(request.resource.data.users[0], request.resource.data.users[1]);
+
+      // Either participant can accept/reject; admin can manage
+      allow update: if isAuthenticated() && (
+        request.auth.uid in resource.data.users || isAdmin()
+      );
+
+      allow delete: if isAuthenticated() && (
+        request.auth.uid in resource.data.users || isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 4. Conversations & Direct Messages
+    // Conversation ID: uidA_uidB (alphabetical)
+    // Chat allowed ONLY between connected users
+    // ==========================================
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants || isAdmin()
+      );
+
+      allow create: if isActive() &&
+        request.auth.uid in request.resource.data.participants &&
+        conversationId == getSortedId(request.resource.data.participants[0], request.resource.data.participants[1]) &&
+        areConnected(request.resource.data.participants[0], request.resource.data.participants[1]);
+
+      allow update: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants || isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /conversations/{conversationId}/messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants ||
+        isAdmin()
+      );
+
+      allow create: if isActive() &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+
+      allow update, delete: if isOwner(resource.data.senderId) || isAdmin();
+    }
+
+    // ==========================================
+    // 5. Mentorships & Reviews
+    // ==========================================
+    match /mentorships/{mentorshipId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.studentId ||
+        request.auth.uid == resource.data.mentorId ||
+        isAdmin()
+      );
+
+      allow create: if isActive() && request.resource.data.studentId == request.auth.uid;
+
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.studentId ||
+        request.auth.uid == resource.data.mentorId ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // mentorshipReviews ID must equal mentorshipId; student of completed mentorship only
+    match /mentorshipReviews/{reviewId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isActive() &&
+        request.resource.data.studentId == request.auth.uid &&
+        reviewId == request.resource.data.mentorshipId &&
+        exists(/databases/$(database)/documents/mentorships/$(reviewId)) &&
+        get(/databases/$(database)/documents/mentorships/$(reviewId)).data.studentId == request.auth.uid &&
+        get(/databases/$(database)/documents/mentorships/$(reviewId)).data.status == 'completed';
+
+      allow update, delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 5b. Roadmaps (Stage D)
+    // Document ID = mentorshipId
+    // Participants of mentorship or admin
+    // ==========================================
+    match /roadmaps/{mentorshipId} {
+      allow read: if isAuthenticated() && (
+        resource == null ||
+        request.auth.uid == resource.data.studentId ||
+        request.auth.uid == resource.data.mentorId ||
+        isAdmin()
+      );
+
+      allow create: if isActive() && (
+        request.auth.uid == request.resource.data.mentorId ||
+        request.auth.uid == request.resource.data.studentId ||
+        isAdmin()
+      );
+
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.studentId ||
+        request.auth.uid == resource.data.mentorId ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 6. Learning Resources
+    // Senior/Faculty/Coordinator/Admin can add
+    // ==========================================
+    match /learningResources/{resourceId} {
+      allow read: if isAuthenticated();
+      allow create: if isSeniorOrAbove() && request.resource.data.addedByUid == request.auth.uid;
+
+      // Author or admin can update full doc; any active user can upvote (helpfulVotes array)
+      allow update: if isAuthenticated() && (
+        (isActive() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['helpfulVotes'])) ||
+        resource.data.addedByUid == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.addedByUid == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 7. Learning Goals (Owner only)
+    // ==========================================
+    match /learningGoals/{goalId} {
+      allow read: if isAuthenticated() && (
+        resource == null || resource.data.uid == request.auth.uid || isAdmin()
+      );
+
+      allow create: if isActive() && request.resource.data.uid == request.auth.uid;
+
+      allow update: if isAuthenticated() && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 8. Projects & Collaborations
+    // ==========================================
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow create: if isActive() && request.resource.data.ownerId == request.auth.uid;
+
+      // Owner/admin can update all; members/requesters can only add/remove their own uid
+      allow update: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        isAdmin() ||
+        (
+          isActive() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids', 'members', 'joinRequestUids', 'joinRequests', 'updatedAt'])
+        )
+      );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 9. Study Groups
+    // ==========================================
+    match /studyGroups/{groupId} {
+      allow read: if isAuthenticated();
+      allow create: if isActive() && request.resource.data.ownerId == request.auth.uid;
+
+      // Owner/admin can update all; active members can join/leave or update shared notes
+      allow update: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        isAdmin() ||
+        (
+          isActive() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids', 'members', 'notes', 'lastEditedBy', 'lastEditedByName', 'lastEditedAt', 'updatedAt'])
+        )
+      );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /studyGroups/{groupId}/messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isActive() && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.senderId) || isAdmin();
+    }
+
+    // ==========================================
+    // 10. Clubs & Announcements
+    // ==========================================
+    match /clubs/{clubId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin();
+
+      // Coordinator or admin can update; active users can toggle followers containing own uid
+      allow update: if isAuthenticated() && (
+        resource.data.coordinatorId == request.auth.uid ||
+        isAdmin() ||
+        (
+          isActive() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followers', 'updatedAt']) &&
+          (
+            request.resource.data.followers.removeAll(resource.data.followers).hasOnly([request.auth.uid]) ||
+            resource.data.followers.removeAll(request.resource.data.followers).hasOnly([request.auth.uid])
+          )
+        )
+      );
+    }
+
+    match /clubs/{clubId}/announcements/{announcementId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && (
+        get(/databases/$(database)/documents/clubs/$(clubId)).data.coordinatorId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 11. Campus Events
+    // Event capacity enforced upon registration
+    // ==========================================
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isCoordinatorOrAbove() && request.resource.data.organizerId == request.auth.uid;
+
+      // Organizer or admin can edit; active users can RSVP if under capacity
+      allow update: if isAuthenticated() && (
+        resource.data.organizerId == request.auth.uid ||
+        isAdmin() ||
+        (
+          isActive() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registeredUids', 'registrations', 'updatedAt']) &&
+          request.resource.data.registeredUids.size() <= resource.data.capacity &&
+          (
+            request.resource.data.registeredUids.removeAll(resource.data.registeredUids).hasOnly([request.auth.uid]) ||
+            resource.data.registeredUids.removeAll(request.resource.data.registeredUids).hasOnly([request.auth.uid])
+          )
+        )
+      );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.organizerId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 12. Community Feed Posts & Comments
+    // ==========================================
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isActive() && request.resource.data.authorId == request.auth.uid;
+
+      // Author/admin can edit all; active users can toggle likes or append comments
+      allow update: if isAuthenticated() && (
+        resource.data.authorId == request.auth.uid ||
+        isAdmin() ||
+        (
+          isActive() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'commentCount'])
+        )
+      );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.authorId == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /posts/{postId}/comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isActive() && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.authorId) || isAdmin();
+    }
+
+    // ==========================================
+    // 13. Reports (Admin moderation queue)
+    // ==========================================
+    match /reports/{reportId} {
+      allow create: if isActive() && request.resource.data.reporterId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 14. In-App Notifications
+    // Active users can dispatch notifications to peers
+    // Only recipient can read, update, delete
+    // ==========================================
+    match /notifications/{notificationId} {
+      allow create: if isActive() &&
+        request.resource.data.recipientUid != null &&
+        request.resource.data.recipientUid != request.auth.uid &&
+        (request.resource.data.senderUid == null || request.resource.data.senderUid == request.auth.uid);
+      allow read, update, delete: if isAuthenticated() && (
+        resource.data.recipientUid == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 15. Moderation Logs
+    // ==========================================
+    match /moderationLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ==========================================
+    // 16. Flashcard Decks & Cards
+    // ==========================================
+    match /flashCardDecks/{deckId} {
+      allow read: if isAuthenticated() && (
+        resource.data.isPublic == true ||
+        resource.data.uid == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if isActive() && request.resource.data.uid == request.auth.uid;
+
+      allow update, delete: if isAuthenticated() && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /flashCardDecks/{deckId}/cards/{cardId} {
+      allow read: if isAuthenticated() && (
+        get(/databases/$(database)/documents/flashCardDecks/$(deckId)).data.isPublic == true ||
+        get(/databases/$(database)/documents/flashCardDecks/$(deckId)).data.uid == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create, update, delete: if isAuthenticated() && (
+        get(/databases/$(database)/documents/flashCardDecks/$(deckId)).data.uid == request.auth.uid ||
+        isAdmin()
+      );
+    }
+  }
+}

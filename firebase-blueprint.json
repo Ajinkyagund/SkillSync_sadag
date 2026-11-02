@@ -1,0 +1,335 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Private user account and authentication record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["student", "senior", "faculty", "clubCoordinator", "admin"] },
+        "status": { "type": "string", "enum": ["active", "pending", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "status", "createdAt"]
+    },
+    "Profile": {
+      "title": "Profile",
+      "description": "Public and peer-facing student profile data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "department": { "type": "string" },
+        "year": { "type": "string" },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "interests": { "type": "array", "items": { "type": "string" } },
+        "role": { "type": "string", "enum": ["student", "senior", "faculty", "clubCoordinator", "admin"] },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "ratingAverage": { "type": "number" },
+        "ratingCount": { "type": "number" },
+        "privacy": { "type": "string", "enum": ["public", "connections"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role"]
+    },
+    "Connection": {
+      "title": "Connection",
+      "description": "Peer connection link between two university students or faculty.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "users": { "type": "array", "items": { "type": "string" } },
+        "requesterId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "note": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "users", "requesterId", "recipientId", "status", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "1-on-1 chat metadata between mutually connected peers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "lastMessageText": { "type": "string" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "unreadCount": { "type": "object" }
+      },
+      "required": ["id", "participants"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Individual chat message in a 1-to-1 conversation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "conversationId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderPhoto": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "conversationId", "senderId", "text", "createdAt"]
+    },
+    "Mentorship": {
+      "title": "Mentorship",
+      "description": "Structured mentorship request and engagement between student and mentor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentPhoto": { "type": "string" },
+        "mentorId": { "type": "string" },
+        "mentorName": { "type": "string" },
+        "mentorPhoto": { "type": "string" },
+        "topic": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "completed"] },
+        "meetingLink": { "type": "string" },
+        "reviewed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "studentId", "mentorId", "topic", "status", "createdAt"]
+    },
+    "MentorshipReview": {
+      "title": "MentorshipReview",
+      "description": "Post-mentorship review and star rating submitted by the student.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mentorshipId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "mentorId": { "type": "string" },
+        "rating": { "type": "number", "minimum": 1, "maximum": 5 },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "mentorshipId", "studentId", "mentorId", "rating", "createdAt"]
+    },
+    "LearningResource": {
+      "title": "LearningResource",
+      "description": "Vetted academic or career learning material.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string" },
+        "type": { "type": "string", "enum": ["course", "video", "article", "documentation", "roadmap"] },
+        "skillTags": { "type": "array", "items": { "type": "string" } },
+        "addedByUid": { "type": "string" },
+        "addedByName": { "type": "string" },
+        "addedByRole": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "url", "type", "skillTags", "addedByUid", "createdAt"]
+    },
+    "LearningGoal": {
+      "title": "LearningGoal",
+      "description": "Personal student skill target with milestones and progress ring.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "skillName": { "type": "string" },
+        "targetDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["not_started", "in_progress", "completed"] },
+        "progressPercentage": { "type": "number" },
+        "resourceItems": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "skillName", "status", "progressPercentage"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Collaborative student project or hackathon endeavor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "requiredSkills": { "type": "array", "items": { "type": "string" } },
+        "maxMembers": { "type": "number" },
+        "isOpen": { "type": "boolean" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerRole": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "object" } },
+        "joinRequests": { "type": "array", "items": { "type": "object" } },
+        "repoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "requiredSkills", "maxMembers", "ownerId", "createdAt"]
+    },
+    "StudyGroup": {
+      "title": "StudyGroup",
+      "description": "Subject study circle with shared notes and group discussion.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "topic": { "type": "string" },
+        "description": { "type": "string" },
+        "scheduleText": { "type": "string" },
+        "meetingLink": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "object" } },
+        "notes": { "type": "string" },
+        "lastEditedBy": { "type": "string" },
+        "lastEditedByName": { "type": "string" },
+        "lastEditedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "topic", "ownerId", "createdAt"]
+    },
+    "Club": {
+      "title": "Club",
+      "description": "Campus student organization or department chapter.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "logoURL": { "type": "string" },
+        "coordinatorId": { "type": "string" },
+        "coordinatorName": { "type": "string" },
+        "followers": { "type": "array", "items": { "type": "string" } },
+        "announcements": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "category", "coordinatorId", "createdAt"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Campus workshop, hackathon, seminar or competition.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string", "enum": ["hackathon", "workshop", "seminar", "competition", "meetup", "other"] },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "location": { "type": "string" },
+        "meetingLink": { "type": "string" },
+        "capacity": { "type": "number" },
+        "clubId": { "type": "string" },
+        "clubName": { "type": "string" },
+        "organizerId": { "type": "string" },
+        "organizerName": { "type": "string" },
+        "registrations": { "type": "array", "items": { "type": "object" } },
+        "status": { "type": "string", "enum": ["active", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "category", "date", "capacity", "organizerId", "createdAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Academic community feed message, update or inquiry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "content": { "type": "string" },
+        "resourceLink": { "type": "string" },
+        "likes": { "type": "array", "items": { "type": "string" } },
+        "comments": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "authorId", "authorName", "content", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Content moderation flag raised against an inappropriate post or comment.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["post", "comment", "user"] },
+        "targetId": { "type": "string" },
+        "targetContentSnippet": { "type": "string" },
+        "reason": { "type": "string", "enum": ["spam", "harassment", "misinformation", "inappropriate", "other"] },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved", "dismissed"] },
+        "resolvedByUid": { "type": "string" },
+        "resolvedAt": { "type": "string", "format": "date-time" },
+        "actionTaken": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "reporterId", "targetType", "targetId", "reason", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Real-time user notification event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientUid": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "senderName": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "linkUrl": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "recipientUid", "type", "title", "message", "read", "createdAt"]
+    },
+    "ModerationLog": {
+      "title": "ModerationLog",
+      "description": "Audit record of administrative moderation and role management actions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "adminUid": { "type": "string" },
+        "adminName": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetDescription": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "adminUid", "action", "targetId", "timestamp"]
+    },
+    "FlashCardDeck": {
+      "title": "FlashCardDeck",
+      "description": "Study deck of flashcards for active recall learning.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "skillTag": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "cardCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "skillTag", "title", "createdAt"]
+    }
+  }
+}

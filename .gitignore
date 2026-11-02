@@ -1,0 +1,13 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+serviceAccountKey.json
+service-account*.json
+firebase-debug.log
+.firebase/
+scripts/service-account-key.json
